@@ -1,7 +1,7 @@
 package main
 
 import (
-	"awesomeProject/onlineChatRoom/utils"
+	"onlineChatRoom/utils"
 	"bufio"
 	"fmt"
 	"log"
