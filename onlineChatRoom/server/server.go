@@ -233,8 +233,8 @@ func main() {
 
 	fmt.Println("聊天室已创建...")
 	// 处理客户端事务
-	go chatRoom.handleEvent()
-	go heart(chatRoom) // 启动心跳检测
+	go safeHandleEvent(chatRoom) //安全包装
+	go heart(chatRoom)           // 启动心跳检测
 
 	// 接收客户端连接
 	for {
@@ -243,7 +243,7 @@ func main() {
 			log.Println("连接客户端时出错...")
 			continue
 		}
-		go chatRoom.handleClient(conn)
+		go chatRoom.safeHandleClient(conn) //安全保护
 	}
 }
 
