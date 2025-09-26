@@ -266,3 +266,19 @@ func heart(cr *ChatRoom) {
 		cr.mutex.Unlock()
 	}
 }
+func  safeHandleEvent(cr *ChatRoom) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Printf("[panic] handleEvent 出现异常: %v", err)
+		}
+	}()
+	cr.handleEvent()
+}
+func (cr *ChatRoom) safeHandleClient(conn net.Conn) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Printf("[panic] handleClient 出现异常: %v", err)
+		}
+	}()
+	cr.handleClient(conn)
+}
