@@ -19,24 +19,30 @@
 ---
 
 ## 📂 项目结构
+.onlineChatRoom
 
-.
 ├── client.go # 客户端代码
+
 ├── server.go # 服务端代码
-├── utils.go # 消息收发工具函数（带长度前缀）
+
+├── utils.go # 消息收发工具函数（带长度前缀粘包处理）
+
+├── go.mod
+
 └── README.md # 项目说明文档
 
 
 ---
 
 ## 🚀 运行方法
-
-### 1. 启动服务端
 ```bash
+1. 启动服务端
+
 go run server.go
 服务端默认监听 localhost:8080。
 
 2. 启动客户端
+
 在另一个终端中运行：
 
 go run client.go
@@ -71,7 +77,9 @@ To:李四-->你好，我是张三
 
 // [心跳] 收到 张三 的 PING
 // [心跳] 已向 张三 回复 PONG
+
 ⚙️ 开发说明
+
 # utils.go
 封装了 SendMessage 与 ReadMessage，实现了带长度前缀的安全消息收发。
 
