@@ -24,7 +24,6 @@
 ├── client.go # 客户端代码
 ├── server.go # 服务端代码
 ├── utils.go # 消息收发工具函数（带长度前缀）
-├── go.mod 
 └── README.md # 项目说明文档
 
 
@@ -73,10 +72,10 @@ To:李四-->你好，我是张三
 // [心跳] 收到 张三 的 PING
 // [心跳] 已向 张三 回复 PONG
 ⚙️ 开发说明
-utils.go
+# utils.go
 封装了 SendMessage 与 ReadMessage，实现了带长度前缀的安全消息收发。
 
-心跳检测实现
+# 心跳检测实现
 
 客户端：startHeartbeat 每 10 秒发送 PING。
 
@@ -84,6 +83,6 @@ utils.go
 
 服务端 heart 协程每 15 秒检查一次，若 30 秒未收到心跳则踢出。
 
-健壮性
+# 健壮性
 
 在 handleClient 和 handleEvent 中加入 panic 恢复 (recover) 防止崩溃。
