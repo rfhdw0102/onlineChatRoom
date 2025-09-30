@@ -24,7 +24,7 @@ func handleServerMessage(conn net.Conn) {
 
 		// 如果是心跳回复 PONG，不作为普通消息打印
 		if msgStr == "PONG" {
-			fmt.Println("[心跳] 收到服务器响应: PONG")
+			//fmt.Println("[心跳] 收到服务器响应: PONG")
 			continue
 		}
 
@@ -80,7 +80,7 @@ func startHeartbeat(conn net.Conn) {
 			log.Println("发送心跳失败:", err)
 			return
 		}
-		fmt.Println("[心跳] 已发送 PING")
+		//fmt.Println("[心跳] 已发送 PING")
 	}
 }
 
