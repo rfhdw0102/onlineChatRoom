@@ -13,8 +13,8 @@ import (
 
 // Client 表示一个客户端连接
 type Client struct {
-	Username      string   // 客户端的网名
-	Conn          net.Conn // 客户端的连接
+	Username      string    // 客户端的网名
+	Conn          net.Conn  // 客户端的连接
 	LastHeartbeat time.Time // 最近一次心跳时间
 }
 
@@ -173,9 +173,9 @@ func (cr *ChatRoom) handleClient(conn net.Conn) {
 		// 心跳包处理
 		if msgStr == "PING" {
 			client.LastHeartbeat = time.Now()
-			log.Printf("[心跳] 收到 %s 的 PING", client.Username)
+			//log.Printf("[心跳] 收到 %s 的 PING", client.Username)
 			_ = utils.SendMessage(conn, []byte("PONG"))
-			log.Printf("[心跳] 已向 %s 回复 PONG", client.Username)
+			//log.Printf("[心跳] 已向 %s 回复 PONG", client.Username)
 			continue
 		}
 
@@ -266,7 +266,7 @@ func heart(cr *ChatRoom) {
 		cr.mutex.Unlock()
 	}
 }
-func  safeHandleEvent(cr *ChatRoom) {
+func safeHandleEvent(cr *ChatRoom) {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Printf("[panic] handleEvent 出现异常: %v", err)
