@@ -1,284 +1,159 @@
 package main
 
 import (
-	"awesomeProject/onlineChatRoom/utils"
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"onlineChatRoom/msg"
+	"onlineChatRoom/utils"
 	"strings"
-	"sync"
 	"time"
 )
 
-// Client 表示一个客户端连接
 type Client struct {
-	Username      string    // 客户端的网名
-	Conn          net.Conn  // 客户端的连接
-	LastHeartbeat time.Time // 最近一次心跳时间
-}
-
-type Message struct {
-	Content string
-	conn    net.Conn
-}
-
-// ChatRoom 聊天室结构体
-type ChatRoom struct {
-	Client  map[*Client]bool // 在线的客户端列表
-	JoinCh  chan *Client     // 加入聊天室通道
-	LeaveCh chan *Client     // 离开聊天室通道
-	Message chan *Message    // 正常聊天通道
-	mutex   sync.Mutex       // 互斥锁
-}
-
-// NewChatRoom 初始化聊天室
-func NewChatRoom() *ChatRoom {
-	return &ChatRoom{
-		Client:  make(map[*Client]bool),
-		JoinCh:  make(chan *Client),
-		LeaveCh: make(chan *Client),
-		Message: make(chan *Message),
-	}
-}
-
-// 广播
-func (cr *ChatRoom) broadcast(conn net.Conn, message []byte) {
-	cr.mutex.Lock()
-	defer cr.mutex.Unlock()
-	for client := range cr.Client {
-		if client.Conn != conn {
-			err := utils.SendMessage(client.Conn, message)
-			if err != nil {
-				log.Printf("广播给：%s 失败...", client.Username)
-				continue
-			}
-		}
-	}
-}
-
-// 显示在线用户列表
-func (cr *ChatRoom) showClient(conn net.Conn) {
-	cr.mutex.Lock()
-	defer cr.mutex.Unlock()
-	message := "在线用户列表: "
-	for client := range cr.Client {
-		message = message + client.Username + "   "
-	}
-	for client := range cr.Client {
-		if client.Conn == conn {
-			err := utils.SendMessage(client.Conn, []byte(message))
-			if err != nil {
-				log.Printf("发送在线用户列表给：%s 失败...", client.Username)
-				continue
-			}
-		}
-	}
-}
-
-// 处理客户端事务
-func (cr *ChatRoom) handleEvent() {
-	for {
-		select {
-		case client := <-cr.JoinCh: // 用户加入聊天室
-			cr.mutex.Lock()
-			cr.Client[client] = true
-			cr.mutex.Unlock()
-			message := fmt.Sprintf("系统广播：%s 加入了聊天室...", client.Username)
-			fmt.Printf("系统广播：%s 加入了聊天室...\n", client.Username)
-			cr.broadcast(client.Conn, []byte(message))
-		case client := <-cr.LeaveCh: // 用户离开聊天室
-			cr.mutex.Lock()
-			delete(cr.Client, client)
-			cr.mutex.Unlock()
-			message := fmt.Sprintf("系统广播：%s 离开了聊天室...", client.Username)
-			fmt.Printf("系统广播：%s 离开了聊天室...\n", client.Username)
-			cr.broadcast(client.Conn, []byte(message))
-		case message := <-cr.Message: // 聊天室公共信息
-			fmt.Println(message.Content)
-			cr.broadcast(message.conn, []byte(message.Content))
-		}
-	}
-}
-
-// 处理客户端连接
-func (cr *ChatRoom) handleClient(conn net.Conn) {
-	defer func(conn net.Conn) {
-		err := conn.Close()
-		if err != nil {
-			log.Println("关闭连接出错:", err)
-		}
-	}(conn)
-
-	reader := bufio.NewReader(conn)
-	var username string
-	for {
-		// 获取用户名
-		message, err := utils.ReadMessage(reader)
-		if err != nil {
-			log.Println("接收客户网名失败:", err)
-			return
-		}
-		username = string(message)
-		// 检查用户名是否有效
-		if username == "" {
-			_ = utils.SendMessage(conn, []byte("Error : 网名不能为空"))
-			continue
-		}
-		// 检查用户名是否已存在
-		cr.mutex.Lock()
-		usernameExists := false
-		for client := range cr.Client {
-			if username == client.Username {
-				usernameExists = true
-				break
-			}
-		}
-		cr.mutex.Unlock()
-		if usernameExists {
-			_ = utils.SendMessage(conn, []byte("Error : 网名已存在"))
-			continue
-		}
-		break
-	}
-
-	// 用户名有效，发送确认
-	_ = utils.SendMessage(conn, []byte("OK"))
-
-	// 创建客户端并加入聊天室
-	client := &Client{
-		Username:      username,
-		Conn:          conn,
-		LastHeartbeat: time.Now(),
-	}
-	cr.JoinCh <- client
-	defer func() {
-		cr.LeaveCh <- client
-	}()
-
-	// 处理客户端消息
-	for {
-		message, err := utils.ReadMessage(reader)
-		if err != nil {
-			if strings.Contains(err.Error(), "forcibly closed by the remote host") {
-				fmt.Println(username + " 已断开连接...")
-				break
-			} else {
-				log.Printf("读取 %s 消息出错: %v", username, err)
-				return
-			}
-		}
-		msgStr := string(message)
-
-		// 心跳包处理
-		if msgStr == "PING" {
-			client.LastHeartbeat = time.Now()
-			//log.Printf("[心跳] 收到 %s 的 PING", client.Username)
-			_ = utils.SendMessage(conn, []byte("PONG"))
-			//log.Printf("[心跳] 已向 %s 回复 PONG", client.Username)
-			continue
-		}
-
-		if msgStr == "quit" {
-			return
-		}
-		if msgStr == "list" {
-			fmt.Println(username + " 请求查看在线用户列表...")
-			cr.showClient(conn)
-			continue
-		}
-		if strings.HasPrefix(msgStr, "To:") {
-			strs := strings.Split(msgStr, "-->")
-			usernameStr := strs[0][3:]
-			if usernameStr == "" {
-				_ = utils.SendMessage(conn, []byte("私聊用户名为空..."))
-				continue
-			}
-			flag := false
-			var ci *Client
-			for client := range cr.Client {
-				if client.Username == usernameStr {
-					ci = client
-					flag = true
-					break
-				}
-			}
-			if flag {
-				msg := username + " 私聊你: " + strs[1]
-				err := utils.SendMessage(ci.Conn, []byte(msg))
-				fmt.Println(username + " 私聊 " + usernameStr + " : " + strs[1])
-				if err != nil {
-					log.Println("私聊发送消息失败...")
-				}
-			} else {
-				_ = utils.SendMessage(conn, []byte("私聊用户名不存在..."))
-			}
-			continue
-		}
-		msg := &Message{
-			Content: username + ":" + msgStr,
-			conn:    conn,
-		}
-		cr.Message <- msg
-	}
+	Username      string
+	Conn          net.Conn
+	LastHeartbeat time.Time
 }
 
 func main() {
-	chatRoom := NewChatRoom() // 初始化聊天室
-	listen, err := net.Listen("tcp", ":8080")
+	room := msg.NewChatRoom()
+	go room.HandleMessages()
+	//go startHeartbeatCheck(room)
+
+	listener, err := net.Listen("tcp", ":8080")
 	if err != nil {
-		log.Fatal("服务端启动失败...")
+		log.Fatal("服务端启动失败:", err)
 	}
-	defer listen.Close()
-
-	fmt.Println("聊天室已创建...")
-	// 处理客户端事务
-	go safeHandleEvent(chatRoom) //安全包装
-	go heart(chatRoom)           // 启动心跳检测
-
-	// 接收客户端连接
-	for {
-		conn, err := listen.Accept()
+	defer func(listener net.Listener) {
+		err := listener.Close()
 		if err != nil {
-			log.Println("连接客户端时出错...")
+			fmt.Println("监听关闭失败...")
+			return
+		}
+	}(listener)
+
+	fmt.Println("聊天室已创建，等待客户端连接...")
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Println("客户端连接失败:", err)
 			continue
 		}
-		go chatRoom.safeHandleClient(conn) //安全保护
+		go handleClient(conn, room)
 	}
 }
 
-// 心跳检测
-func heart(cr *ChatRoom) {
-	ticker := time.NewTicker(15 * time.Second) // 每 15 秒检查一次
-	defer ticker.Stop()
-	for {
-		<-ticker.C
-		now := time.Now()
-		cr.mutex.Lock()
-		for client := range cr.Client {
-			if now.Sub(client.LastHeartbeat) > 30*time.Second { // 超过 30 秒没心跳
-				log.Printf("[心跳] 客户端 %s 心跳超时，断开连接", client.Username)
-				client.Conn.Close()
-				delete(cr.Client, client)
-				cr.LeaveCh <- client
-			}
+// 处理客户端
+func handleClient(conn net.Conn, room *msg.ChatRoom) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[panic] handleClient 出现异常: %v", r)
 		}
-		cr.mutex.Unlock()
+	}()
+
+	reader := bufio.NewReader(conn)
+	username := checkLogin(reader, conn, room)
+	client := &Client{Username: username, Conn: conn, LastHeartbeat: time.Now()}
+
+	room.AddClient(username, conn)
+	room.MsgChan <- &msg.Message{Type: msg.MessageJoin, Sender: username}
+
+	defer func() {
+		room.RemoveClient(username)
+		room.MsgChan <- &msg.Message{Type: msg.MessageLeave, Sender: username}
+		utils.CloseConn(conn, username)
+	}()
+	for {
+		message, err := msg.ReadJsonMessage(reader)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				//log.Printf("%s 正常退出聊天室", username)
+			} else if strings.Contains(err.Error(), "forcibly closed") {
+				log.Printf("%s 连接被远程关闭", username)
+			} else {
+				log.Printf("%s 连接断开: %v", username, err)
+			}
+			return
+		}
+		message.Conn = conn
+		handleMessage(message, client, room)
 	}
 }
-func safeHandleEvent(cr *ChatRoom) {
-	defer func() {
-		if err := recover(); err != nil {
-			log.Printf("[panic] handleEvent 出现异常: %v", err)
+
+// 验证用户名唯一
+func checkLogin(reader *bufio.Reader, conn net.Conn, room *msg.ChatRoom) string {
+	for {
+		loginMes, err := msg.ReadJsonMessage(reader)
+		if err != nil {
+			log.Println("读取用户名失败:", err)
+			continue
 		}
-	}()
-	cr.handleEvent()
-}
-func (cr *ChatRoom) safeHandleClient(conn net.Conn) {
-	defer func() {
-		if err := recover(); err != nil {
-			log.Printf("[panic] handleClient 出现异常: %v", err)
+		username := strings.TrimSpace(loginMes.Sender)
+		if username == "" {
+			_ = msg.SendJsonMessage(conn, &msg.Message{
+				Type:    msg.MessageChat,
+				Sender:  "[系统]",
+				Content: "用户名不能为空",
+			})
+			continue
 		}
-	}()
-	cr.handleClient(conn)
+		room.Mutex.Lock()
+		_, exists := room.Clients[username]
+		room.Mutex.Unlock()
+		if exists {
+			_ = msg.SendJsonMessage(conn, &msg.Message{
+				Type:    msg.MessageChat,
+				Sender:  "[系统]",
+				Content: "用户名已存在，请重新输入",
+			})
+			continue
+		}
+		_ = msg.SendJsonMessage(conn, &msg.Message{Content: "OK"})
+		return username
+	}
 }
+
+// 处理消息
+func handleMessage(m *msg.Message, client *Client, room *msg.ChatRoom) {
+	switch m.Type {
+	case msg.MessageHeart:
+		client.LastHeartbeat = time.Now()
+		err := client.Conn.SetReadDeadline(time.Now().Add(15 * time.Second))
+		if err != nil {
+			log.Printf("handleMessage设置超时时间失败: %v", err)
+		}
+		_ = msg.SendJsonMessage(m.Conn, &msg.Message{
+			Type:    msg.MessageHeart,
+			Content: "PONG",
+		})
+	case msg.MessageChat:
+		room.MsgChan <- m
+	case msg.MessagePrivate:
+		room.PrivateChat(m)
+	case msg.MessageList:
+		room.ShowClients(m.Sender, m.Conn)
+	default:
+	}
+}
+
+//// 心跳检测
+//func startHeartbeatCheck(room *msg.ChatRoom) {
+//	ticker := time.NewTicker(15 * time.Second)
+//	defer ticker.Stop()
+//	for range ticker.C {
+//		now := time.Now()
+//		room.Mutex.Lock()
+//		for username, conn := range room.Clients {
+//			err := conn.SetReadDeadline(now.Add(10 * time.Second))
+//			if err != nil {
+//				log.Printf("%s 设置超时时间失败: %v", username, err)
+//			}
+//		}
+//		room.Mutex.Unlock()
+//	}
+//}
