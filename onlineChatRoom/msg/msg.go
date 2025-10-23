@@ -4,22 +4,23 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
-	"log"
 	"net"
 	"onlineChatRoom/utils"
 	"strings"
 )
 
-type MessageType int //发送类型的种类
+type MessageType int
 
 const (
-	MessageJoin    MessageType = iota //用户加入
-	MessageLeave                      //用户离开
-	MessageChat                       //公共聊天
-	MessagePrivate                    //私聊
-	MessageList                       //查看在线用户列表
-	MessageHeart                      //心跳检测
+	MessageJoin     MessageType = iota //用户登录
+	MessageRegister                    //用户注册
+	MessageLeave                       //用户离线
+	MessageChat                        //聊天
+	MessagePrivate                     //私聊
+	MessageList                        //查看在线用户列表
+	MessageHeart                       //心跳检测
 )
 
 type Message struct {
@@ -47,8 +48,7 @@ func ReadJsonMessage(reader *bufio.Reader) (*Message, error) {
 		if strings.Contains(err.Error(), "forcibly closed") {
 			return nil, err
 		}
-		log.Printf("ReadJsonMessage失败: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("ReadJsonMessage failed:%w", err)
 	}
 	return UnJsonMessage(message)
 }
@@ -56,8 +56,7 @@ func ReadJsonMessage(reader *bufio.Reader) (*Message, error) {
 func SendJsonMessage(conn net.Conn, message *Message) error {
 	jsonMessage, err := message.JsonMessage()
 	if err != nil {
-		log.Println("SendJsonMessage...")
-		return err
+		return fmt.Errorf("SendJsonMessage failed:%w", err)
 	}
 	return utils.SendMessage(conn, jsonMessage)
 }
