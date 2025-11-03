@@ -9,6 +9,8 @@ import (
 	"net"
 	"onlineChatRoom/utils"
 	"strings"
+	"sync"
+	"time"
 )
 
 type MessageType int
@@ -20,8 +22,8 @@ const (
 	MessageChat                        //聊天
 	MessagePrivate                     //私聊
 	MessageList                        //查看在线用户列表
-	MessageHeart
-	MessageRank //心跳检测
+	MessageHeart                       //心跳检测
+	MessageRank                        //活跃度排行
 )
 
 type Message struct {
@@ -30,6 +32,20 @@ type Message struct {
 	Receiver string      // 接收者
 	Content  string      // 内容
 	Conn     net.Conn    // 发送者连接
+}
+
+// Client 客户端
+type Client struct {
+	Username      string
+	Conn          net.Conn
+	LastHeartbeat time.Time
+}
+
+// ChatRoom 聊天室
+type ChatRoom struct {
+	Clients map[string]*Client
+	MsgChan chan *Message
+	Mutex   sync.Mutex
 }
 
 func (msg *Message) JsonMessage() ([]byte, error) {
@@ -60,4 +76,23 @@ func SendJsonMessage(conn net.Conn, message *Message) error {
 		return fmt.Errorf("SendJsonMessage failed:%w", err)
 	}
 	return utils.SendMessage(conn, jsonMessage)
+}
+
+func NewChatRoom() *ChatRoom {
+	return &ChatRoom{
+		Clients: make(map[string]*Client),
+		MsgChan: make(chan *Message, 100),
+	}
+}
+
+func (cr *ChatRoom) AddClient(username string, client *Client) {
+	cr.Mutex.Lock()
+	defer cr.Mutex.Unlock()
+	cr.Clients[username] = client
+}
+
+func (cr *ChatRoom) RemoveClient(username string) {
+	cr.Mutex.Lock()
+	defer cr.Mutex.Unlock()
+	delete(cr.Clients, username)
 }
