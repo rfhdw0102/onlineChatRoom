@@ -12,7 +12,6 @@ type user struct {
 	Id       int    `db:"id"`
 	Username string `db:"username"`
 	Password string `db:"password"`
-	//State    int    `db:"state"`
 }
 
 // ConnectDb 连接数据库
@@ -46,13 +45,3 @@ func SearchUserDb(username string) (pwd string, err error) {
 	}
 	return u.Password, nil
 }
-
-// Update 更新用户状态 0为离线，1为在线
-//func Update(state int, username string) error {
-//	sqlStr := "update user set state = ? where username = ?"
-//	_, err := DB.Exec(sqlStr, state, username)
-//	if err != nil {
-//		return fmt.Errorf("update failed:%w", err)
-//	}
-//	return nil
-//}
