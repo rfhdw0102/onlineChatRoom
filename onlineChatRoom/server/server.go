@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"github.com/go-redis/redis"
-	"github.com/jmoiron/sqlx"
 	"io"
 	"log"
 	"net"
@@ -14,10 +12,17 @@ import (
 )
 
 func main() {
-	// panic 捕获
 	defer func() {
 		if err := recover(); err != nil {
 			log.Printf("server main panic recovered: %v\n", err)
+		}
+		rr := db.DB.Close()
+		if rr != nil {
+			log.Println("MySQL连接关闭失败..")
+		}
+		r := db.RDB.Close()
+		if r != nil {
+			log.Println("Redis连接关闭失败..")
 		}
 	}()
 	room := msg.NewChatRoom()
@@ -26,32 +31,16 @@ func main() {
 	if dbErr != nil {
 		log.Fatal(dbErr)
 	}
-	// 关闭MySQL连接
-	defer func(DB *sqlx.DB) {
-		err := DB.Close()
-		if err != nil {
-			log.Println("MySQL连接关闭失败..")
-		}
-	}(db.DB)
 	// 连接Redis
 	RedisErr := db.InitRedis()
 	if RedisErr != nil {
 		log.Fatal(RedisErr)
 	}
-
-	// 关闭Redis连接
-	defer func(RDB *redis.Client) {
-		err := RDB.Close()
-		if err != nil {
-			log.Println("Redis连接关闭失败..")
-		}
-	}(db.RDB)
-
-	// 处理各种消息
+	// 清理Redis数据
+	db.ClearRedis()
+	go room.HandleStreams()
 	go room.HandleMessages()
-	// 心跳定时检测
 	go room.StartHeartbeatMonitor()
-
 	listener, err := net.Listen("tcp", ":8080")
 	if err != nil {
 		log.Fatal("server start failed:", err)
@@ -81,8 +70,44 @@ func handleClientMessage(conn net.Conn, room *msg.ChatRoom) {
 			log.Printf("server handleClientMessage panic recovered: %v\n", r)
 		}
 	}()
-	var username string
 	reader := bufio.NewReader(conn)
+
+	username := handleInit(reader, conn, room)
+	if username == "" {
+		return
+	}
+	handleMsg(username, reader, conn, room)
+}
+
+// handleInit 处理登录注册的消息
+func handleInit(reader *bufio.Reader, conn net.Conn, room *msg.ChatRoom) (username string) {
+	for {
+		initMsg, err := msg.ReadJsonMessage(reader)
+		if err != nil {
+			log.Printf("%s 在登录注册时失败", conn.RemoteAddr().String())
+			return ""
+		}
+		initMsg.Conn = conn
+		var status bool
+		switch initMsg.Type {
+		case msg.MessageRegister:
+			msg.Register(initMsg)
+		case msg.MessageJoin:
+			status = room.Join(initMsg)
+			username = initMsg.Sender
+		default:
+		}
+		if status {
+			break
+		} else {
+			fmt.Println("登录失败..")
+		}
+	}
+	return username
+}
+
+// handleMsg 处理登录注册之后的信息
+func handleMsg(username string, reader *bufio.Reader, conn net.Conn, room *msg.ChatRoom) {
 	for {
 		message, err := msg.ReadJsonMessage(reader)
 		if message != nil {
@@ -92,12 +117,25 @@ func handleClientMessage(conn net.Conn, room *msg.ChatRoom) {
 			if errors.Is(err, io.EOF) {
 				//log.Printf("正常退出")
 			} else {
-				log.Printf("%s 非正常退出", username)
+				log.Printf("%s 被kill或者异常断开...\n", username)
+				leaveMsg := &msg.Message{
+					Type:   msg.MessageLeave,
+					Sender: username,
+				}
+				room.MsgChan <- leaveMsg
 			}
 			return
 		}
 		message.Conn = conn
-		// 发给消息channel，让其处理
-		room.MsgChan <- message
+		switch message.Type {
+		case msg.MessageLeave, msg.MessageList, msg.MessageRank, msg.MessageHeart:
+			room.MsgChan <- message
+		default:
+			// 聊天消息才异步入 Redis Streams
+			_, err = db.AddStreamsData(message.Sender, message.Content, message.Receiver)
+			if err != nil {
+				log.Println("写入 Redis Streams 失败:", err)
+			}
+		}
 	}
 }
