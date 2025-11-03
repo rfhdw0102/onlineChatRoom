@@ -36,29 +36,23 @@ func keyboardInput() (string, error) {
 
 // 注册 and 登录处理
 func registerOrLogin(n string, conn net.Conn) *msg.Message {
-	fmt.Println("请输入用户名和密码，用一个空格隔开...(quit退出)")
 	reader := bufio.NewReader(conn)
 	for {
-		input, err := keyboardInput()
-		if err != nil {
-			log.Println(err)
-		}
-		if input == "quit" {
+		fmt.Println("请输入账户:")
+		username, _ := keyboardInput()
+		if username == "quit" {
 			fmt.Println("退出成功...")
 			return nil
 		}
-		split := strings.Split(input, " ")
-		if len(split) != 2 {
-			fmt.Println("输入格式错误，请重新输入")
-			continue
-		}
+		fmt.Println("请输入密码:")
+		password, _ := keyboardInput()
 		var loginMes *msg.Message
 		if n == "1" {
-			loginMes = &msg.Message{Type: msg.MessageRegister, Sender: split[0], Content: split[1]}
+			loginMes = &msg.Message{Type: msg.MessageRegister, Sender: username, Content: password}
 		} else {
-			loginMes = &msg.Message{Type: msg.MessageJoin, Sender: split[0], Content: split[1]}
+			loginMes = &msg.Message{Type: msg.MessageJoin, Sender: username, Content: password}
 		}
-		err = msg.SendJsonMessage(conn, loginMes)
+		err := msg.SendJsonMessage(conn, loginMes)
 		if err != nil {
 			log.Println("register send Message failed...")
 			continue
@@ -69,6 +63,11 @@ func registerOrLogin(n string, conn net.Conn) *msg.Message {
 			continue
 		}
 		if response.Content == "OK" {
+			if n == "1" {
+				fmt.Println("注册成功...")
+			} else {
+				fmt.Println("登录成功...")
+			}
 			return loginMes
 		} else {
 			fmt.Println(response.Content)
@@ -88,7 +87,6 @@ func handleServerMessage(conn net.Conn) {
 	for {
 		message, err := msg.ReadJsonMessage(reader)
 		if err != nil {
-			fmt.Println("server is end...")
 			close(flag)
 			return
 		}

@@ -39,7 +39,7 @@ func main() {
 			fmt.Println(er)
 		}
 		userMsg = registerOrLogin(n, conn)
-		if userMsg != nil {
+		if userMsg != nil && n == "2" {
 			break
 		}
 	}
@@ -82,8 +82,8 @@ func main() {
 				continue
 			}
 			if strings.HasPrefix(content, "To:") {
-				parts := strings.SplitN(content, "-->", 2)
-				if len(parts) < 2 {
+				parts := strings.Split(content, "-->")
+				if len(parts) != 2 {
 					fmt.Println("格式错误，应为 To:用户名-->内容")
 					continue
 				}
@@ -92,6 +92,7 @@ func main() {
 				if privateErr != nil {
 					log.Println("send msg.MessagePrivate failed...", err)
 				}
+				fmt.Println("发送成功...")
 				continue
 			}
 			if content == "rank" {
