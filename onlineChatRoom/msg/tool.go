@@ -203,19 +203,19 @@ func (cr *ChatRoom) Join(msg *Message) bool {
 }
 
 // Leave 处理退出消息
-func (cr *ChatRoom) Leave(msg *Message) {
-	_, err := db.AddStreamsData("系统广播", fmt.Sprintf("%s 离开了聊天室...", msg.Sender), msg.Sender)
+func (cr *ChatRoom) Leave(username string) {
+	_, err := db.AddStreamsData("系统广播", fmt.Sprintf("%s 离开了聊天室...", username), username)
 	if err != nil {
 		log.Println("Leave写入 Redis Streams 失败:", err)
 	}
-	cr.RemoveClient(msg.Sender)
+	cr.RemoveClient(username)
 }
 
 // PongHeart 处理心跳
-func (cr *ChatRoom) PongHeart(msg *Message) {
+func (cr *ChatRoom) PongHeart(username string) {
 	cr.Mutex.Lock()
 	defer cr.Mutex.Unlock()
-	if client, exists := cr.Clients[msg.Sender]; exists {
+	if client, exists := cr.Clients[username]; exists {
 		client.LastHeartbeat = time.Now()
 		err := client.Conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 		if err != nil {
@@ -236,11 +236,7 @@ func (cr *ChatRoom) StartHeartbeatMonitor() {
 			if now.Sub(client.LastHeartbeat) > 20*time.Second {
 				log.Printf("用户 %s 心跳超时，强制下线\n", username)
 				utils.CloseConn(client.Conn, username)
-				delete(cr.Clients, username)
-				_, err := db.AddStreamsData("系统广播", fmt.Sprintf("%s 离开了聊天室...", username), username)
-				if err != nil {
-					log.Println("心跳写入 Redis Streams 失败:", err)
-				}
+				cr.Leave(username)
 			}
 		}
 		cr.Mutex.Unlock()
@@ -248,17 +244,16 @@ func (cr *ChatRoom) StartHeartbeatMonitor() {
 }
 
 // SendRank 发送活跃度排行
-func SendRank(msg *Message) {
+func SendRank(username string, conn net.Conn) {
 	sprintf, err := db.ShowActivityRank()
 	if err != nil {
 		log.Println(err)
 		return
 	}
-
-	rr := SendJsonMessage(msg.Conn, &Message{Type: MessageRank, Content: sprintf})
+	rr := SendJsonMessage(conn, &Message{Type: MessageRank, Content: sprintf})
 	if rr != nil {
-		log.Println("向客户端发送活跃度排名失败:", rr)
+		log.Printf("向%s发送活跃度排名失败:%s", username, rr)
 		return
 	}
-	fmt.Println(msg.Sender, "查看活跃度排行...")
+	fmt.Println(username, "查看活跃度排行...")
 }

@@ -24,13 +24,7 @@ func (cr *ChatRoom) HandleStreams() {
 			content := m.Values["content"].(string)
 			// 系统广播分支
 			if sender == "系统广播" {
-				if receiver != "" {
-					// 定向系统通知
-					cr.broadcast(receiver, fmt.Sprintf("%s: %s", sender, content))
-				} else {
-					// 群发系统消息
-					cr.broadcast(sender, fmt.Sprintf("%s: %s", sender, content))
-				}
+				cr.broadcast(receiver, fmt.Sprintf("%s: %s", sender, content))
 				lastID = m.ID
 				continue
 			}
@@ -41,7 +35,7 @@ func (cr *ChatRoom) HandleStreams() {
 				Content:  content,
 				Type:     MessageChat,
 			}
-			// 如果 sender 在线，再附加 Conn，否则跳过
+			// 如果 sender 在线，再附加 Conn
 			if client, ok := cr.Clients[m.Values["sender"].(string)]; ok {
 				msg.Conn = client.Conn
 			}
@@ -49,8 +43,8 @@ func (cr *ChatRoom) HandleStreams() {
 				cr.PrivateChat(msg)
 			} else {
 				cr.broadcast(msg.Sender, fmt.Sprintf("%s: %s", msg.Sender, msg.Content))
-				_ = db.AddActivity(msg.Sender, 1)
 			}
+			_ = db.AddActivity(msg.Sender, 1)
 			lastID = m.ID // 更新游标，防止重复读取
 		}
 	}
@@ -66,7 +60,7 @@ func (cr *ChatRoom) HandleMessages() {
 	for msg := range cr.MsgChan {
 		switch msg.Type {
 		case MessageHeart:
-			cr.PongHeart(msg)
+			cr.PongHeart(msg.Sender)
 		case MessageRegister:
 			Register(msg)
 		case MessageList:
@@ -78,9 +72,9 @@ func (cr *ChatRoom) HandleMessages() {
 				log.Println(msg.Sender, "登录增加活跃度失败 :", err)
 			}
 		case MessageLeave:
-			cr.Leave(msg)
+			cr.Leave(msg.Sender)
 		case MessageRank:
-			SendRank(msg)
+			SendRank(msg.Sender, msg.Conn)
 		default:
 		}
 	}
