@@ -181,6 +181,8 @@ func (cr *ChatRoom) Join(msg *Message) bool {
 	}
 	client := &Client{Username: msg.Sender, Conn: msg.Conn, LastHeartbeat: time.Now()}
 	cr.AddClient(msg.Sender, client)
+	//content := fmt.Sprintf("系统广播：%s 加入了聊天室...", msg.Sender)
+	//cr.broadcast(msg.Sender, content)
 	// 发送历史消息
 	historyMsg, rrr := db.ShowHistory()
 	if rrr != nil {
@@ -196,7 +198,11 @@ func (cr *ChatRoom) Join(msg *Message) bool {
 	if err != nil {
 		log.Println("写入 Redis Streams 失败:", err)
 	}
-
+	// 增加活跃度
+	err = db.AddActivity(msg.Sender, 2)
+	if err != nil {
+		log.Println(msg.Sender, "登录增加活跃度失败 :", err)
+	}
 	return true
 }
 

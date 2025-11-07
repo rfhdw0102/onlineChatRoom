@@ -50,8 +50,8 @@ func (cr *ChatRoom) HandleStreams() {
 	}
 }
 
-// HandleMessages 普通消息处理
-func (cr *ChatRoom) HandleMessages() {
+// HandleChanMessages 普通消息处理
+func (cr *ChatRoom) HandleChanMessages() {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Printf("server room.HandleMessages panic recovered: %v\n", err)
@@ -67,10 +67,6 @@ func (cr *ChatRoom) HandleMessages() {
 			cr.ShowClients(msg.Sender, msg.Conn)
 		case MessageJoin:
 			cr.Join(msg)
-			err := db.AddActivity(msg.Sender, 2)
-			if err != nil {
-				log.Println(msg.Sender, "登录增加活跃度失败 :", err)
-			}
 		case MessageLeave:
 			cr.Leave(msg.Sender)
 		case MessageRank:
