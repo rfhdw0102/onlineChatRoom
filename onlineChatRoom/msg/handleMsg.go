@@ -61,12 +61,8 @@ func (cr *ChatRoom) HandleChanMessages() {
 		switch msg.Type {
 		case MessageHeart:
 			cr.PongHeart(msg.Sender)
-		case MessageRegister:
-			Register(msg)
 		case MessageList:
 			cr.ShowClients(msg.Sender, msg.Conn)
-		case MessageJoin:
-			cr.Join(msg)
 		case MessageLeave:
 			cr.Leave(msg.Sender)
 		case MessageRank:
