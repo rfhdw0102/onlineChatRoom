@@ -33,6 +33,26 @@ func KeyboardInput() (string, error) {
 	}
 	return message, nil
 }
+func HandleRegOrLog(conn net.Conn) *msg.Message {
+	var userMsg *msg.Message
+	for {
+		fmt.Println("1、注册...")
+		fmt.Println("2、登录...")
+		n, er := KeyboardInput()
+		if n != "1" && n != "2" {
+			fmt.Println("请输入1 or 2...")
+			continue
+		}
+		if er != nil {
+			fmt.Println(er)
+		}
+		userMsg = RegisterOrLogin(n, conn)
+		if userMsg != nil && n == "2" {
+			break
+		}
+	}
+	return userMsg
+}
 
 // RegisterOrLogin 注册 and 登录处理
 func RegisterOrLogin(n string, conn net.Conn) *msg.Message {
@@ -77,7 +97,7 @@ func RegisterOrLogin(n string, conn net.Conn) *msg.Message {
 }
 
 // HandleServerMessage 处理服务端发来的信息
-func HandleServerMessage(conn net.Conn, serverErrFlag chan struct{}) {
+func HandleServerMessage(conn net.Conn, serverErrFlag chan struct{}) error {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Printf("client handleServerMessage panic recovered: %v\n", err)
@@ -87,8 +107,7 @@ func HandleServerMessage(conn net.Conn, serverErrFlag chan struct{}) {
 	for {
 		message, err := msg.ReadJsonMessage(reader)
 		if err != nil {
-			close(serverErrFlag)
-			return
+			return fmt.Errorf("接收服务端消息失败:%w", err)
 		}
 		switch message.Type {
 		case msg.MessageHeart:
@@ -103,7 +122,7 @@ func HandleServerMessage(conn net.Conn, serverErrFlag chan struct{}) {
 }
 
 // StartHeartbeat 发送心跳包
-func StartHeartbeat(username string, conn net.Conn) {
+func StartHeartbeat(username string, conn net.Conn) error {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Printf("client startHeartbeat panic recovered: %v\n", err)
@@ -120,8 +139,7 @@ func StartHeartbeat(username string, conn net.Conn) {
 		}
 		err := msg.SendJsonMessage(conn, message)
 		if err != nil {
-			log.Println("send heartBeat failed:", err)
-			return
+			return fmt.Errorf("发送心跳失败:%w", err)
 		}
 	}
 }
