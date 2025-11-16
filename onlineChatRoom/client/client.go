@@ -5,7 +5,6 @@ import (
 	"log"
 	"net"
 	"onlineChatRoom/client/tool"
-	"onlineChatRoom/msg"
 	"onlineChatRoom/utils"
 )
 
@@ -27,28 +26,23 @@ func main() {
 	}
 	defer utils.CloseConn(conn, "客户端")
 	fmt.Println("-------------欢迎来到网络聊天室-------------")
-	var userMsg *msg.Message
-	//注册 or 登录处理
-	for {
-		fmt.Println("1、注册...")
-		fmt.Println("2、登录...")
-		n, er := tool.KeyboardInput()
-		if n != "1" && n != "2" {
-			fmt.Println("请输入1 or 2...")
-			continue
-		}
-		if er != nil {
-			fmt.Println(er)
-		}
-		userMsg = tool.RegisterOrLogin(n, conn)
-		if userMsg != nil && n == "2" {
-			break
-		}
-	}
+	userMsg := tool.HandleRegOrLog(conn)
 	//处理服务端的发来的信息
-	go tool.HandleServerMessage(conn, serverErrFlag)
+	go func() {
+		err = tool.HandleServerMessage(conn, serverErrFlag)
+		if err != nil {
+			log.Println(err)
+		}
+		close(serverErrFlag)
+	}()
 	//发送心跳
-	go tool.StartHeartbeat(userMsg.Sender, conn)
+	go func() {
+		err = tool.StartHeartbeat(userMsg.Sender, conn)
+		if err != nil {
+			log.Println(err)
+		}
+		close(clientQuitFlag)
+	}()
 	tool.Screen()
 	//输入内容的管道
 	var msgChan = make(chan string)
@@ -58,7 +52,7 @@ func main() {
 			content, inputErr := tool.KeyboardInput()
 			if inputErr != nil {
 				log.Println(inputErr)
-				continue
+				close(clientQuitFlag)
 			}
 			msgChan <- content
 		}
@@ -69,7 +63,7 @@ func main() {
 		case <-serverErrFlag: // 服务端崩溃
 			fmt.Println("与服务端断开连接，客户端退出...")
 			return
-		case <-clientQuitFlag:
+		case <-clientQuitFlag: // 客户端异常
 			return
 		case content := <-msgChan:
 			tool.SendServer(content, conn, userMsg, clientQuitFlag)
